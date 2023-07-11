@@ -266,6 +266,11 @@ export class SocketConnection extends EventEmitter {
 
     async changeStatus(status: AccountStatuses) {
         this.socket.emit("changeStatus", {status: status});
+        
+        // Set status if no errors received
+        setTimeout(() => {
+            this.account.status = status
+        }, 500);
     }
 }
 
@@ -285,6 +290,7 @@ export async function createAccount(name: string, nickname: string, password: st
         name: response.data.name,
         nickname: response.data.nickname,
         password: password,
-        token: response.data.token
+        token: response.data.token,
+        avatar: null,
     };
 }

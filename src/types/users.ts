@@ -12,6 +12,7 @@ export interface User {
     nickname: string;
     status?: UserStatuses;
     lastMessage: string;
+    avatar: string | null;
 };
 
 export interface Account {
@@ -22,4 +23,5 @@ export interface Account {
     password: string;
     token: Token;
     conversations?: Array<UUID>;
+    avatar: string | null;
 }

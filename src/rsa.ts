@@ -10,7 +10,7 @@ export class KeyPair {
         this.public = keys.publicKey
     }
 
-    encrypt(content: string): string {
+    encrypt(content: string) : string {
         return crypto.publicEncrypt(this.public, Buffer.from(content)).toString("base64");
     }
 
@@ -27,7 +27,7 @@ export class PublicKey {
         this.key = crypto.createPublicKey(key);
     }
 
-    encrypt(content: string): string {
+    encrypt(content: string) : string {
         return crypto.publicEncrypt(this.key, Buffer.from(content)).toString("base64");
     }
 
