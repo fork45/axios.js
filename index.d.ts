@@ -25,21 +25,21 @@ export class Client {
 
 export class HTTPConnection {
     readonly account: Account;
-    readonly opts: httpTypes.CreateClientOptions;
+    readonly opts: CreateClientOptions;
     readonly instance: AxiosInstance;
-    readonly keys: httpTypes.Keys;
+    readonly keys: Keys;
 
     public socket: SocketConnection | undefined;
 
-    constructor(account: Account, opts: httpTypes.CreateClientOptions = {}, socket: SocketConnection | undefined = undefined);
+    constructor(account: Account, opts: CreateClientOptions = {}, socket: SocketConnection | undefined = undefined);
 
-    async getAccountInfo(): Promise<httpTypes.UserResponse>;
+    async getAccountInfo(): Promise<UserResponse>;
     async getUser(user: UUID): Promise<User>;
     async getConversations(): Promise<Array<User>>;
     async createConversation(user: UUID, publicKey: string, privateKey: string): Promise<void>;
     async closeConversation(user: UUID): Promise<void>;
     async getMessage(id: string): Promise<Message>;
-    async getMessages(user: UUID, limit: httpTypes.Limit = 50, after: string | undefined = undefined): Promise<Array<Message>>;
+    async getMessages(user: UUID, limit: Limit = 50, after: string | undefined = undefined): Promise<Array<Message>>;
     async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<Message>>;
     async sendMessage(user: UUID, content: string): Promise<Message>;
     async deleteMessage(id: string);
@@ -50,13 +50,13 @@ export class HTTPConnection {
 
 export class SocketConnection extends EventEmitter {
     readonly account: Account;
-    readonly opts: socketTypes.CreateSocketOptions;
-    readonly keys: httpTypes.Keys;
+    readonly opts: CreateSocketOptions;
+    readonly keys: Keys;
     readonly socket: Socket;
 
     public http: HTTPConnection | undefined;
 
-    constructor(account: Account, opts: socketTypes.CreateSocketOptions, keys: httpTypes.Keys, http: HTTPConnection | undefined = undefined);
+    constructor(account: Account, opts: CreateSocketOptions, keys: Keys, http: HTTPConnection | undefined = undefined);
 
     async markMessageAsRead(id: string);
     async typing(user: UUID);
@@ -263,7 +263,7 @@ export class Message {
 
     public encrypted: boolean;
 
-    constructor(data: types.Message, connection: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
+    constructor(data: HTTPMessage, connection: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
 
     async deleteMessage(): Promise<boolean>;
     async editMessage(content: string): Promise<boolean>;
@@ -314,7 +314,7 @@ export class User {
     readonly http: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
 
-    constructor(data: types.User, http: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
+    constructor(data: HTTPUser, http: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
 
     async closeConversation(): Promise<boolean>;
     async getMessages(limit: Limit = 50, after: string | undefined = undefined): Promise<boolean | Array<Message>>;
@@ -366,7 +366,7 @@ export interface ConversationMessage {
     datetime: number;
 }
 
-export interface Message extends ConversationMessage {
+export interface HTTPMessage extends ConversationMessage {
     type: "message";
     editDatetime: number | null;
     read: boolean;
@@ -410,8 +410,8 @@ export type AccountStatuses = "online" | "do not disturb" | "hidden";
 export type UserStatuses = "online" | "do not disturb" | "offline";
 
 
-export interface User {
-    uuid: UUID;
+export interface HTTPUser {
+    _id: UUID;
     name: string;
     nickname: string;
     status?: UserStatuses;
