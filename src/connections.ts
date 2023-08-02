@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { UUID, privateDecrypt, publicEncrypt } from "crypto";
 import { io, Socket } from "socket.io-client";
 
-import { Account, AccountStatuses } from "./types/users.js";
+import { Account, AccountStatuses, Token } from "./types/users.js";
 import { User } from "./users.js";
 import * as httpTypes from "./types/http.js";
 import * as socketTypes from "./types/socket.js"
@@ -15,11 +15,11 @@ export class HTTPConnection {
     readonly account: Account;
     readonly opts: httpTypes.CreateClientOptions;
     readonly instance: AxiosInstance;
-    readonly keys: httpTypes.Keys;
+    public keys: httpTypes.Keys;
 
-    public socket: SocketConnection | undefined;
+    public socket: SocketConnection;
 
-    constructor(account: Account, opts: httpTypes.CreateClientOptions = {}, socket: SocketConnection | undefined = undefined) {
+    constructor(account: Account, opts: httpTypes.CreateClientOptions = {}, socket: SocketConnection) {
         this.account = account
         this.opts = opts
         this.keys = opts.keys ? opts.keys : {}
@@ -43,12 +43,31 @@ export class HTTPConnection {
 
             throw new opcodeEnumeration[response.data.opcode](undefined, response);
         });
+
+        this.socket.on("conversationKey", (user: UUID, key: string) => {
+            this.keys[user].public = key
+        });
     }
 
     async getAccountInfo() : Promise<httpTypes.UserResponse> {
         const response = await this.instance.get("/@me");
 
         return response.data;
+    }
+
+    async editNickname(nickname: string) : Promise<void> {
+        await this.instance.patch("/@me/nickname", {
+            nickname: nickname
+        });
+    }
+
+    async changePassword(password: string, oldPassword: string) : Promise<Token> {
+        const response: AxiosResponse<{token: Token}> = await this.instance.patch("/@me/password", {
+            password: oldPassword,
+            new: password
+        });
+
+        return response.data.token;
     }
 
     /**
@@ -154,7 +173,7 @@ export class HTTPConnection {
 
         let messageObject = new Message({
             type: "message",
-            _id: response.data._id,
+            id: response.data.id,
             author: this.account.uuid,
             receiver: user,
             content: content,
@@ -169,6 +188,12 @@ export class HTTPConnection {
 
     async deleteMessage(id: string) {
         await this.instance.delete(`/messages/${id}`);
+    }
+
+    async deleteMessages(user: UUID, ids: Array<string>) {
+        await this.instance.post(`${user}/messages/delete/bulk`, {
+            data: ids
+        });
     }
 
     async editMessage(id: string, content: string) {
@@ -194,25 +219,32 @@ export class HTTPConnection {
             private: privateKey
         }
     }
+
+    async getPublicKey(user: UUID) : Promise<string> {
+        const response: AxiosResponse<{key: string}> = await this.instance.get("keys/" + user);
+        
+        return response.data.key;
+    }
+
 }
 
 export class SocketConnection extends EventEmitter {
     readonly account: Account;
     readonly opts: socketTypes.CreateSocketOptions;
-    readonly keys: httpTypes.Keys;
+    public keys: httpTypes.Keys | undefined;
     readonly socket: Socket;
 
     public http: HTTPConnection | undefined;
 
-    constructor(account: Account, opts: socketTypes.CreateSocketOptions, keys: httpTypes.Keys, http: HTTPConnection | undefined = undefined) {
+    constructor(account: Account, opts: socketTypes.CreateSocketOptions, http: HTTPConnection | undefined = undefined) {
         super();
 
         this.account = account
         this.opts = opts
-        this.keys = keys
+        this.keys = http?.keys
         this.http = http;
 
-        this.socket = io("ws://localhost:4508", {
+        this.socket = io(`ws://localhost:${opts.socketPort}`, {
             auth: {
                 token: account.token
             }
@@ -223,31 +255,23 @@ export class SocketConnection extends EventEmitter {
                 resolve();
             });
         }).then(() => {
-            this.socket.on("newMessage", (message: socketTypes.NewMessage) => {
-                opts.onNewMessage ? opts.onNewMessage(message._id, message.user, message.content) : null;
-            });
-
-            this.socket.on("messageEdit", (message: socketTypes.MessageEdit) => {
-                opts.onMessageEdit ? opts.onMessageEdit(message._id, message.content) : null;
-            });
-
             this.socket.on("newMessages", (messages: Array<messageTypes.Message>) => {
                 let newMessages = [];
 
                 for (const message of messages) {
-                    newMessages.push(new Message(message));
+                    let objectMessage = new Message(message);
+                    if (this.http && message.author !== this.account.uuid) {
+                        objectMessage.content = privateDecrypt(this.http.keys[message.author].private, Buffer.from(message.content)).toString("utf-8")
+                        objectMessage.encrypted = false
+                    }
+                    newMessages.push(objectMessage);
                 }
 
-                opts.onNewMessages ? opts.onNewMessages(newMessages) : null;
-            });
-
-            this.socket.on("status", (status: socketTypes.Status) => {
-                opts.onStatus ? opts.onStatus(status.user, status.status) : null
+                this.emit("newMessages", newMessages);
             });
 
             this.socket.onAny((event: string, ...args) => {
-                let handler = opts[("on" + (event.charAt(0).toUpperCase() + event.slice(0))) as keyof socketTypes.CreateSocketOptions];
-                handler ? handler(args[0], args[1] as never, args[2]) : null;
+                this.emit(event, ...Object.values(args[0]));
             });
 
             this.socket.on("error", (error: httpTypes.ErrorResponse) => {
@@ -286,7 +310,7 @@ export async function createAccount(name: string, nickname: string, password: st
     }
 
     return {
-        uuid: response.data._id,
+        uuid: response.data.id,
         name: response.data.name,
         nickname: response.data.nickname,
         password: password,

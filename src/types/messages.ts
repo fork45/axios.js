@@ -2,7 +2,7 @@ import { UUID } from "crypto"
 
 export interface ConversationMessage {
     type: "message" | "key";
-    _id: string;
+    id: string;
     author: UUID;
     receiver: UUID;
     content: string;

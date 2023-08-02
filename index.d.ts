@@ -1,4 +1,5 @@
 import { UUID } from "crypto";
+import EventEmitter from "events";
 
 declare qwapi;
 
@@ -14,6 +15,8 @@ export class Client {
 
     constructor(account: Account, opts: CreateClientOptions | CreateSocketOptions = {});
 
+    async deleteAccount(password: string): Promise<void>;
+
 }
 
 
@@ -27,13 +30,15 @@ export class HTTPConnection {
     readonly account: Account;
     readonly opts: CreateClientOptions;
     readonly instance: AxiosInstance;
-    readonly keys: Keys;
+    public keys: Keys;
 
-    public socket: SocketConnection | undefined;
+    public socket: SocketConnection;
 
-    constructor(account: Account, opts: CreateClientOptions = {}, socket: SocketConnection | undefined = undefined);
+    constructor(account: Account, opts: CreateClientOptions = {}, socket: SocketConnection);
 
     async getAccountInfo(): Promise<UserResponse>;
+    async editNickname(nickname: string): Promise<void>;
+    async changePassword(password: string, oldPassword: string): Promise<Token>;
     async getUser(user: UUID): Promise<User>;
     async getConversations(): Promise<Array<User>>;
     async createConversation(user: UUID, publicKey: string, privateKey: string): Promise<void>;
@@ -43,20 +48,22 @@ export class HTTPConnection {
     async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<Message>>;
     async sendMessage(user: UUID, content: string): Promise<Message>;
     async deleteMessage(id: string);
+    async deleteMessages(user: UUID, ids: Array<string>);
     async editMessage(id: string, content: string);
     async sendKey(user: UUID, publicKey: string, privateKey: string);
+    async getPublicKey(user: UUID): Promise<string>;
 
 }
 
 export class SocketConnection extends EventEmitter {
     readonly account: Account;
     readonly opts: CreateSocketOptions;
-    readonly keys: Keys;
+    public keys: Keys | undefined;
     readonly socket: Socket;
 
     public http: HTTPConnection | undefined;
 
-    constructor(account: Account, opts: CreateSocketOptions, keys: Keys, http: HTTPConnection | undefined = undefined);
+    constructor(account: Account, opts: CreateSocketOptions, http: HTTPConnection | undefined = undefined);
 
     async markMessageAsRead(id: string);
     async typing(user: UUID);
@@ -215,6 +222,18 @@ export class IncorrectPassword extends ClientError {
 
 }
 
+export class InvalidMessageNumber extends ClientError {
+    readonly length: number | undefined;
+
+    constructor(message: string = "You can only delete more than 2 and less than 100 messages in one request", response: AxiosResponse | Socket);
+}
+
+export class InvalidMessageId extends ClientError {
+    readonly id: string | undefined;
+
+    constructor(message: string = "One of the id is invalid: ", response: AxiosResponse | Socket);
+}
+
 export class NoServerResponse extends ServerError {
 
     constructor(message: string = "The request was made but no response was received", request: any);
@@ -240,7 +259,9 @@ export const opcodeEnumeration = [
     InvalidRsaKey,
     DidntCreatedConversation,
     AlreadySentKey,
-    IncorrectPassword
+    IncorrectPassword,
+    InvalidMessageNumber,
+    InvalidMessageId
 ]
 
 
@@ -250,14 +271,14 @@ export const opcodeEnumeration = [
 *
 *********************/
 
-export class Message {
+export class Message extends EventEmitter {
     readonly id: string;
     readonly author: UUID;
     readonly receiver: string;
     public content: string;
     readonly datetime: Date;
     readonly editDatetime: Date | null;
-    readonly read: boolean;
+    public read: boolean;
     readonly connection: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
 
@@ -305,11 +326,12 @@ export class PublicKey {
 *
 *********************/
 
-export class User {
+export class User extends EventEmitter {
     readonly uuid: UUID;
     readonly name: string;
     readonly nickname: string;
     readonly lastMessage: string | Message;
+    public status: types.UserStatuses | undefined;
 
     readonly http: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
@@ -319,6 +341,7 @@ export class User {
     async closeConversation(): Promise<boolean>;
     async getMessages(limit: Limit = 50, after: string | undefined = undefined): Promise<boolean | Array<Message>>;
     async getAllMessages(after: string | undefined = undefined): Promise<boolean | Array<Message>>;
+    async deleteMessages(ids: Array<string>): Promise<boolean>;
 }
 
 
@@ -328,6 +351,12 @@ export class User {
 *
 *********************/
 
+
+type Enumerate<N extends number, Acc extends number[] = []> = Acc['length'] extends N
+    ? Acc[number]
+    : Enumerate<N, [...Acc, Acc['length']]>
+type NumberRange<F extends number, T extends number> = Exclude<Enumerate<T>, Enumerate<F>>
+
 export type Limit = NumberRange<0, 101>
 
 export interface ErrorResponse {
@@ -336,7 +365,7 @@ export interface ErrorResponse {
 };
 
 export interface CreateClientOptions {
-    keys?: Keys,
+    keys?: Keys;
 };
 
 export interface HTTPResponse extends ErrorResponse { };
@@ -344,12 +373,18 @@ export interface HTTPResponse extends ErrorResponse { };
 export interface UserResponse extends HTTPResponse, User { };
 
 export interface CreateAccountResponse extends HTTPResponse {
-    _id: UUID;
+    id: UUID;
     name: string;
     nickname: string;
     token: Token;
 };
 
+export interface Keys {
+    [name: UUID]: {
+        public: string;
+        private: string;
+    }
+};
 
 /********************
 *
@@ -359,14 +394,14 @@ export interface CreateAccountResponse extends HTTPResponse {
 
 export interface ConversationMessage {
     type: "message" | "key";
-    _id: string;
+    id: string;
     author: UUID;
     receiver: UUID;
     content: string;
     datetime: number;
 }
 
-export interface HTTPMessage extends ConversationMessage {
+export interface Message extends ConversationMessage {
     type: "message";
     editDatetime: number | null;
     read: boolean;
@@ -376,7 +411,6 @@ export interface KeyMessage extends ConversationMessage {
     type: "key";
 }
 
-
 /********************
 *
 * types/socket.ts
@@ -384,19 +418,79 @@ export interface KeyMessage extends ConversationMessage {
 *********************/
 
 export interface CreateSocketOptions {
-    "onNewConversation"?: (user: UUID) => void;
-    "onConversationDelete"?: (user: UUID) => void;
-    "onConversationKey"?: (user: UUID) => void;
-    "onNewMessage"?: (id: string, user: UUID, content: string) => void;
-    "onMessageDelete"?: (id: string) => void;
-    "onMessageEdit"?: (id: string, content: string) => void;
-    "onWaitingUsers"?: (users: Array<UUID>) => void;
-    "onNewMessages"?: (messages: Array<Message>) => void;
-    "onStatus"?: (user: UUID, status: UserStatuses) => void;
-    "onReadMessage"?: (id: string) => void;
-    "onTyping"?: (user: UUID) => void;
-}
+    socketPort?: 45088 | number;
+};
 
+export interface EventData { };
+
+export interface WaitingUsers extends EventData {
+    users: Array<UUID>;
+};
+
+export interface UserDelete extends EventData {
+    user: UUID;
+};
+
+export interface NicknameChange extends EventData {
+    user: UUID;
+    nickname: string;
+};
+
+export interface AvatarChange extends EventData {
+    user: UUID;
+    hash: string;
+};
+
+export interface UserTyping extends EventData {
+    user: UUID;
+};
+
+export interface Status extends EventData {
+    user: UUID;
+    status: UserStatuses;
+};
+
+export interface NewConversation extends EventData {
+    user: UUID;
+};
+
+export interface ConversationKey extends EventData {
+    user: UUID;
+    key: string;
+};
+
+export interface ConversationDelete extends EventData {
+    user: UUID;
+};
+
+export interface NewMessages extends EventData {
+    messages: Array<Message>;
+};
+
+export interface NewMessage extends EventData {
+    id: string;
+    user: UUID;
+    content: string
+};
+
+export interface MessageEdit extends EventData {
+    id: string;
+    content: string;
+};
+
+export interface DeleteMessage extends EventData {
+    user: UUID;
+    id: string;
+};
+
+export interface DeleteMessages extends EventData {
+    user: UUID;
+    messages: Array<string>;
+};
+
+export interface ReadMessage extends EventData {
+    id: string;
+};
 
 /********************
 *
@@ -411,7 +505,7 @@ export type UserStatuses = "online" | "do not disturb" | "offline";
 
 
 export interface HTTPUser {
-    _id: UUID;
+    id: UUID;
     name: string;
     nickname: string;
     status?: UserStatuses;

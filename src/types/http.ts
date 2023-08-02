@@ -16,7 +16,7 @@ export interface ErrorResponse {
 };
 
 export interface CreateClientOptions {
-    keys?: Keys,
+    keys?: Keys;
 };
 
 export interface HTTPResponse extends ErrorResponse {};
@@ -24,7 +24,7 @@ export interface HTTPResponse extends ErrorResponse {};
 export interface UserResponse extends HTTPResponse, User {};
 
 export interface CreateAccountResponse extends HTTPResponse {
-    _id: UUID;
+    id: UUID;
     name: string;
     nickname: string;
     token: Token;

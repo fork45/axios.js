@@ -273,6 +273,34 @@ export class IncorrectPassword extends ClientError {
 
 }
 
+export class InvalidMessageNumber extends ClientError {
+    readonly length: number | undefined;
+
+    constructor(message: string="You can only delete more than 2 and less than 100 messages in one request", response: AxiosResponse | Socket) {
+        super(message, response);
+        if (response instanceof Socket) {
+            this.length = undefined
+        } else {
+            this.length = response.request.data.messages.length
+        }
+    }
+}
+
+export class InvalidMessageId extends ClientError {
+    readonly id: string | undefined;
+
+    constructor(message: string ="One of the id is invalid: ", response: AxiosResponse | Socket) {
+        if (response instanceof Socket) {
+            super("One of the id is invalid", response);
+            this.id = undefined
+        } else {
+            const id = response.data.message.split(" ")[response.data.message.length - 1]
+            super(message + id, response);
+            this.id = id
+        }
+    }
+}
+
 export class NoServerResponse extends ServerError {
 
     constructor(message: string="The request was made but no response was received", request: any) {
@@ -300,5 +328,7 @@ export const opcodeEnumeration = [
     InvalidRsaKey,
     DidntCreatedConversation,
     AlreadySentKey,
-    IncorrectPassword
+    IncorrectPassword,
+    InvalidMessageNumber,
+    InvalidMessageId
 ]
