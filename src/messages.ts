@@ -11,7 +11,7 @@ export class Message extends EventEmitter {
     public content: string;
     readonly datetime: Date;
     readonly editDatetime: Date | null;
-    public read: boolean;
+    private _read: boolean;
     readonly connection: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
     
@@ -29,7 +29,7 @@ export class Message extends EventEmitter {
         this.content = data.content
         this.datetime = new Date(data.datetime);
         this.editDatetime = data.editDatetime ? new Date(data.editDatetime) : null;
-        this.read = data.read
+        this._read = data.read
 
         this.encrypted = true;
 
@@ -71,12 +71,16 @@ export class Message extends EventEmitter {
             if (id !== this.id)
                 return;
             
-            this.read = true;
+            this._read = true;
 
             this.markAsRead = async () => {return false};
 
             this.emit("readMessage", ...Object.values(arguments));
         });
+    }
+
+    public get read() : boolean {
+        return this._read;
     }
 
     async deleteMessage() : Promise<boolean> {

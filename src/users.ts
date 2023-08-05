@@ -9,9 +9,10 @@ import EventEmitter from "events";
 export class User extends EventEmitter {
     readonly uuid: UUID;
     readonly name: string;
-    readonly nickname: string;
-    readonly lastMessage: string | Message;
-    public status: types.UserStatuses | undefined;
+    private _nickname: string;
+    private _avatar: string | null;
+    private _lastMessage: string | Message;
+    private _status: types.UserStatuses | undefined;
 
     readonly http: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
@@ -21,10 +22,11 @@ export class User extends EventEmitter {
         
         this.uuid = data.uuid
         this.name = data.name
-        this.nickname = data.nickname
-        this.status = data.status
-
-        let message: Message | string = data.lastMessage;
+        this._nickname = data.nickname
+        this._avatar = data.avatar
+        this._status = data.status
+        this._lastMessage = data.lastMessage
+    
         new Promise<Message | string>((resolve) => {
             if (!http) {
                 resolve(data.lastMessage);
@@ -34,15 +36,36 @@ export class User extends EventEmitter {
 
             resolve(http.getMessage(data.lastMessage));
         }).then((messageObject) => {
-            message = messageObject;
+            this._lastMessage = messageObject;
         });
-        this.lastMessage = message
 
         this.http = http
         this.socket = socket
 
+        this.socket?.on("avatarChange", (user: UUID, hash: string) => {
+            if (user !== this.uuid) {
+                return;
+            }
+
+            this._avatar = hash
+            this.emit("avatarChange", hash);
+        });
+
+        this.socket?.on("nicknameChange", (user: UUID, nickname: string) => {
+            if (user !== this.uuid) {
+                return;
+            }
+
+            this._nickname = nickname
+            this.emit("nicknameChange", nickname);
+        });
+
         this.socket?.on("newMessage", (id: string, user: UUID, content: string) => {
-            if (!this.http || user !== this.uuid) {
+            if (user !== this.uuid) {
+                return;
+            }
+            if (!this.http) {
+                this._lastMessage = id;
                 return;
             }
 
@@ -60,6 +83,8 @@ export class User extends EventEmitter {
             
             message.encrypted = false
 
+            this._lastMessage = message
+
             this.emit("newMessage", message);
         });
 
@@ -68,7 +93,7 @@ export class User extends EventEmitter {
                 return;
             }
 
-            this.status = status
+            this._status = status
             this.emit("status", status);
         });
 
@@ -87,6 +112,22 @@ export class User extends EventEmitter {
         });
     }
     
+    public get lastMessage() : string | Message {
+        return this._lastMessage;
+    }
+
+    public get avatar() : string | null {
+        return this._avatar;
+    }
+
+    public get nickname() : string {
+        return this._nickname;
+    }
+
+    public get status() : types.UserStatuses | undefined {
+        return this._status;
+    }
+
     async closeConversation() : Promise<boolean> {
         if (!this.http) return false;
 

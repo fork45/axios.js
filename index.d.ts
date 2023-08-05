@@ -278,7 +278,7 @@ export class Message extends EventEmitter {
     public content: string;
     readonly datetime: Date;
     readonly editDatetime: Date | null;
-    public read: boolean;
+    private _read: boolean;
     readonly connection: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
 
@@ -286,6 +286,8 @@ export class Message extends EventEmitter {
 
     constructor(data: HTTPMessage, connection: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
 
+    public get read(): boolean;
+    
     async deleteMessage(): Promise<boolean>;
     async editMessage(content: string): Promise<boolean>;
     async markAsRead(): Promise<boolean>;
@@ -329,14 +331,20 @@ export class PublicKey {
 export class User extends EventEmitter {
     readonly uuid: UUID;
     readonly name: string;
-    readonly nickname: string;
-    readonly lastMessage: string | Message;
-    public status: types.UserStatuses | undefined;
+    private _nickname: string;
+    private _avatar: string | null;
+    private _lastMessage: string | Message;
+    private _status: types.UserStatuses | undefined;
 
     readonly http: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
 
     constructor(data: HTTPUser, http: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
+
+    public get lastMessage(): string | Message;
+    public get nickname(): string;
+    public get avatar(): string | null;
+    public get status(): types.UserStatuses;
 
     async closeConversation(): Promise<boolean>;
     async getMessages(limit: Limit = 50, after: string | undefined = undefined): Promise<boolean | Array<Message>>;
