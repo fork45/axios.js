@@ -279,11 +279,13 @@ export class Message extends EventEmitter {
     readonly datetime: Date;
     readonly editDatetime: Date | null;
     private _read: boolean;
+
+
     readonly connection: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
 
     public encrypted: boolean;
-
+    
     constructor(data: HTTPMessage, connection: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
 
     public get read(): boolean;
@@ -333,7 +335,7 @@ export class User extends EventEmitter {
     readonly name: string;
     private _nickname: string;
     private _avatar: string | null;
-    private _lastMessage: string | Message;
+    private _lastMessage: Message | null;
     private _status: types.UserStatuses | undefined;
 
     readonly http: HTTPConnection | undefined;
