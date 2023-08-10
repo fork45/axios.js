@@ -11,7 +11,7 @@ export interface User {
     name: string;
     nickname: string;
     status?: UserStatuses;
-    lastMessage: string;
+    lastMessage: string | null;
     avatar: string | null;
 };
 

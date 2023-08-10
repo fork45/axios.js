@@ -12,6 +12,8 @@ export class Message extends EventEmitter {
     readonly datetime: Date;
     readonly editDatetime: Date | null;
     private _read: boolean;
+
+
     readonly connection: HTTPConnection | undefined;
     readonly socket: SocketConnection | undefined;
     

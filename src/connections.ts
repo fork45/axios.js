@@ -77,7 +77,7 @@ export class HTTPConnection {
     async getUser(user: UUID) : Promise<User> {
         const response: AxiosResponse<httpTypes.UserResponse> = await this.instance.get(`/conversations/${user}`);
 
-        return new User(response.data);
+        return new User(response.data, this, this.socket);
     }
     
     async getConversations(): Promise<Array<User>> {
@@ -236,7 +236,7 @@ export class SocketConnection extends EventEmitter {
 
     public http: HTTPConnection | undefined;
 
-    constructor(account: Account, opts: socketTypes.CreateSocketOptions, http: HTTPConnection | undefined = undefined) {
+    constructor(account: Account, opts: socketTypes.CreateSocketOptions, http: HTTPConnection | undefined) {
         super();
 
         this.account = account
@@ -259,7 +259,7 @@ export class SocketConnection extends EventEmitter {
                 let newMessages = [];
 
                 for (const message of messages) {
-                    let objectMessage = new Message(message);
+                    let objectMessage = new Message(message, this.http, this);
                     if (this.http && message.author !== this.account.uuid) {
                         objectMessage.content = privateDecrypt(this.http.keys[message.author].private, Buffer.from(message.content)).toString("utf-8")
                         objectMessage.encrypted = false

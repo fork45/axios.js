@@ -11,63 +11,48 @@ export class User extends EventEmitter {
     readonly name: string;
     private _nickname: string;
     private _avatar: string | null;
-    private _lastMessage: string | Message;
+    private _lastMessage: Message | null;
     private _status: types.UserStatuses | undefined;
 
-    readonly http: HTTPConnection | undefined;
-    readonly socket: SocketConnection | undefined;
+    readonly http: HTTPConnection;
+    readonly socket: SocketConnection;
 
-    constructor(data: types.User, http: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined) {
+    constructor(data: types.User, http: HTTPConnection, socket: SocketConnection) {
         super();
         
+        this.http = http
+        this.socket = socket
+
         this.uuid = data.uuid
         this.name = data.name
         this._nickname = data.nickname
         this._avatar = data.avatar
         this._status = data.status
-        this._lastMessage = data.lastMessage
-    
-        new Promise<Message | string>((resolve) => {
-            if (!http) {
-                resolve(data.lastMessage);
+        this._lastMessage = null
 
+        if (data.lastMessage) 
+            this.http.getMessage(data.lastMessage).then((message) => {this._lastMessage = message});
+
+        this.socket.on("avatarChange", (user: UUID, hash: string) => {
+            if (user !== this.uuid)
                 return;
-            }
 
-            resolve(http.getMessage(data.lastMessage));
-        }).then((messageObject) => {
-            this._lastMessage = messageObject;
-        });
-
-        this.http = http
-        this.socket = socket
-
-        this.socket?.on("avatarChange", (user: UUID, hash: string) => {
-            if (user !== this.uuid) {
-                return;
-            }
 
             this._avatar = hash
             this.emit("avatarChange", hash);
         });
 
-        this.socket?.on("nicknameChange", (user: UUID, nickname: string) => {
-            if (user !== this.uuid) {
+        this.socket.on("nicknameChange", (user: UUID, nickname: string) => {
+            if (user !== this.uuid)
                 return;
-            }
 
             this._nickname = nickname
             this.emit("nicknameChange", nickname);
         });
 
-        this.socket?.on("newMessage", (id: string, user: UUID, content: string) => {
-            if (user !== this.uuid) {
+        this.socket.on("newMessage", (id: string, user: UUID, content: string) => {
+            if (user !== this.uuid)
                 return;
-            }
-            if (!this.http) {
-                this._lastMessage = id;
-                return;
-            }
 
             const buffer = publicDecrypt(this.http.keys[user].public, Buffer.from(content));
             const message = new Message({
@@ -88,7 +73,7 @@ export class User extends EventEmitter {
             this.emit("newMessage", message);
         });
 
-        this.socket?.on("status", (user: UUID, status: types.UserStatuses) => {
+        this.socket.on("status", (user: UUID, status: types.UserStatuses) => {
             if (user !== this.uuid) {
                 return;
             }
@@ -97,7 +82,7 @@ export class User extends EventEmitter {
             this.emit("status", status);
         });
 
-        this.socket?.on("conversationDelete", (user: UUID) => {
+        this.socket.on("conversationDelete", (user: UUID) => {
             if (user !== this.uuid) {
                 return;
             }
@@ -112,7 +97,7 @@ export class User extends EventEmitter {
         });
     }
     
-    public get lastMessage() : string | Message {
+    public get lastMessage() : Message | null {
         return this._lastMessage;
     }
 
