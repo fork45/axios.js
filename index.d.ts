@@ -343,7 +343,7 @@ export class User extends EventEmitter {
 
     constructor(data: HTTPUser, http: HTTPConnection | undefined = undefined, socket: SocketConnection | undefined = undefined);
 
-    public get lastMessage(): string | Message;
+    public get lastMessage(): Message | null;
     public get nickname(): string;
     public get avatar(): string | null;
     public get status(): types.UserStatuses;
