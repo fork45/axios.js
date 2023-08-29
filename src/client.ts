@@ -5,10 +5,12 @@ import { Account } from "./types/users.js";
 import { NoServerResponse } from "./errors.js";
 
 export class Client {
+    readonly account: Account;
     readonly http: HTTPConnection;
     readonly socket: SocketConnection;
 
     constructor(account: Account, opts: CreateClientOptions | CreateSocketOptions = {}) {
+        this.account = account
         this.socket = new SocketConnection(account, opts as CreateSocketOptions, undefined);
         this.http = new HTTPConnection(account, opts as CreateClientOptions, this.socket);
         this.socket.http = this.http;

@@ -10,6 +10,7 @@ declare qwapi;
 *********************/
 
 export class Client {
+    readonly account: Account;
     readonly http: HTTPConnection;
     readonly socket: SocketConnection;
 
@@ -72,7 +73,7 @@ export class SocketConnection extends EventEmitter {
 
 export async function createAccount(name: string, nickname: string, password: string): Promise<Account>;
 
-
+export async function login(name: string, password: string, options: CreateClientOptions | CreateSocketOptions): Promise<Client>;
 /********************
 *
 * errors.ts
@@ -381,6 +382,8 @@ export interface CreateClientOptions {
 export interface HTTPResponse extends ErrorResponse { };
 
 export interface UserResponse extends HTTPResponse, User { };
+
+export interface AccountResponse extends HTTPResponse, Account { };
 
 export interface CreateAccountResponse extends HTTPResponse {
     id: UUID;

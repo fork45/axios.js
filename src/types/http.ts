@@ -1,6 +1,6 @@
 import { UUID } from "crypto";
 
-import { User } from "./users.js";
+import { Account, User } from "./users.js";
 import { Token } from "./users.js";
 
 type Enumerate<N extends number, Acc extends number[] = []> = Acc['length'] extends N
@@ -22,6 +22,8 @@ export interface CreateClientOptions {
 export interface HTTPResponse extends ErrorResponse {};
 
 export interface UserResponse extends HTTPResponse, User {};
+
+export interface AccountResponse extends HTTPResponse, Account{};
 
 export interface CreateAccountResponse extends HTTPResponse {
     id: UUID;

@@ -10,6 +10,7 @@ import * as messageTypes from "./types/messages.js";
 import { Message } from "./messages.js";
 import { NoServerResponse, opcodeEnumeration } from "./errors.js";
 import { EventEmitter } from "events";
+import { Client } from "./client.js";
 
 export class HTTPConnection {
     readonly account: Account;
@@ -317,4 +318,14 @@ export async function createAccount(name: string, nickname: string, password: st
         token: response.data.token,
         avatar: null,
     };
+}
+
+export async function login(name: string, password: string, options: httpTypes.CreateClientOptions | socketTypes.CreateSocketOptions) : Promise<Client> {
+    const response: AxiosResponse<httpTypes.AccountResponse> = await axios.get(`/login/${name}/${password}`);
+
+    if (response.status !== 200) {
+        throw new opcodeEnumeration[response.data.opcode](undefined, response);
+    }
+
+    return new Client(response.data, options);
 }
