@@ -74,6 +74,10 @@ export class SocketConnection extends EventEmitter {
 export async function createAccount(name: string, nickname: string, password: string): Promise<Account>;
 
 export async function login(name: string, password: string, options: CreateClientOptions | CreateSocketOptions): Promise<Client>;
+
+export async function loginByToken(token: Token, options: CreateClientOptions | CreateSocketOptions): Promise<Client>
+
+
 /********************
 *
 * errors.ts

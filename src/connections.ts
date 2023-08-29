@@ -329,3 +329,13 @@ export async function login(name: string, password: string, options: httpTypes.C
 
     return new Client(response.data, options);
 }
+
+export async function loginByToken(token: Token, options: httpTypes.CreateClientOptions | socketTypes.CreateSocketOptions): Promise<Client> {
+    const response: AxiosResponse<httpTypes.AccountResponse> = await axios.get(`/@me`);
+
+    if (response.status !== 200) {
+        throw new opcodeEnumeration[response.data.opcode](undefined, response);
+    }
+
+    return new Client(response.data, options);
+}
