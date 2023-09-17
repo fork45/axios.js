@@ -1,6 +1,6 @@
 import { UUID } from "crypto";
 
-import { Account, User } from "./users.js";
+import { Account, Profile, User } from "./users.js";
 import { Token } from "./users.js";
 
 type Enumerate<N extends number, Acc extends number[] = []> = Acc['length'] extends N
@@ -11,30 +11,27 @@ type NumberRange<F extends number, T extends number> = Exclude<Enumerate<T>, Enu
 export type Limit = NumberRange<0, 101>
 
 export interface ErrorResponse {
-    opcode: number;
-    message: string;
+    opcode: string;
 };
 
 export interface CreateClientOptions {
-    keys?: Keys;
+    keys: Keys;
 };
 
 export interface HTTPResponse extends ErrorResponse {};
 
 export interface UserResponse extends HTTPResponse, User {};
 
-export interface AccountResponse extends HTTPResponse, Account{};
+export interface ProfileResponse extends HTTPResponse, Profile {};
 
-export interface CreateAccountResponse extends HTTPResponse {
-    id: UUID;
-    name: string;
-    nickname: string;
-    token: Token;
-};
+export interface AccountResponse extends HTTPResponse, Account {};
+
+export interface Key {
+    public: string | undefined;
+    private: string | undefined;
+    aes: string;
+}
 
 export interface Keys {
-    [name: UUID]: {
-        public: string;
-        private: string;
-    }
+    [name: UUID]: Key
 };

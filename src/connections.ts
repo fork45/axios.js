@@ -1,26 +1,27 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { UUID, privateDecrypt, publicEncrypt } from "crypto";
+import { UUID, privateDecrypt, publicEncrypt, randomBytes } from "crypto";
 import { io, Socket } from "socket.io-client";
 
-import { Account, AccountStatuses, Token } from "./types/users.js";
+import { Account, AccountStatuses, Profile, Token } from "./types/users.js";
 import { User } from "./users.js";
+import * as types from "./types/connection.js"
 import * as httpTypes from "./types/http.js";
-import * as socketTypes from "./types/socket.js"
 import * as messageTypes from "./types/messages.js";
-import { Message } from "./messages.js";
+import { AESKeyMessage, Message, RSAKeyMessage, TextMessage } from "./messages.js";
 import { NoServerResponse, opcodeEnumeration } from "./errors.js";
 import { EventEmitter } from "events";
 import { Client } from "./client.js";
+import { KeyPair, decryptMessage, editMessage, encryptMessage } from "./keys.js";
 
 export class HTTPConnection {
     readonly account: Account;
-    readonly opts: httpTypes.CreateClientOptions;
+    readonly opts: types.ConnectionOptions;
     readonly instance: AxiosInstance;
     public keys: httpTypes.Keys;
 
     public socket: SocketConnection;
 
-    constructor(account: Account, opts: httpTypes.CreateClientOptions = {}, socket: SocketConnection) {
+    constructor(account: Account, opts: types.ConnectionOptions = { keys: {} }, socket: SocketConnection) {
         this.account = account
         this.opts = opts
         this.keys = opts.keys ? opts.keys : {}
@@ -31,7 +32,7 @@ export class HTTPConnection {
             headers: {
                 Authorization: account.token
             },
-            baseURL: "localhost:17672",
+            baseURL: "localhost:80",
             validateStatus(status) {
                 return status < 300;
             },
@@ -50,20 +51,20 @@ export class HTTPConnection {
         });
     }
 
-    async getAccountInfo() : Promise<httpTypes.UserResponse> {
-        const response = await this.instance.get("/@me");
+    async getAccountInfo(): Promise<httpTypes.AccountResponse> {
+        const response = await this.instance.get<httpTypes.AccountResponse>("/@me");
 
         return response.data;
     }
 
-    async editNickname(nickname: string) : Promise<void> {
-        await this.instance.patch("/@me/nickname", {
+    async editNickname(nickname: string): Promise<void> {
+        await this.instance.patch("/profile/nickname", {
             nickname: nickname
         });
     }
 
-    async changePassword(password: string, oldPassword: string) : Promise<Token> {
-        const response: AxiosResponse<{token: Token}> = await this.instance.patch("/@me/password", {
+    async changePassword(password: string, oldPassword: string): Promise<Token> {
+        const response = await this.instance.patch<{ token: Token }>("/@me/password", {
             password: oldPassword,
             new: password
         });
@@ -71,76 +72,54 @@ export class HTTPConnection {
         return response.data.token;
     }
 
-    /**
-     * ### IMPORTANT: YOU CAN GET ONLY USERS THAT HAS CONVERSATION WITH YOU
-     * 
-     */
-    async getUser(user: UUID) : Promise<User> {
-        const response: AxiosResponse<httpTypes.UserResponse> = await this.instance.get(`/conversations/${user}`);
+    async getUser(user: UUID): Promise<User> {
+        const response = await this.instance.get<httpTypes.ProfileResponse>(`/profile/${user}`);
 
         return new User(response.data, this, this.socket);
     }
     
     async getConversations(): Promise<Array<User>> {
-        const response: AxiosResponse<Array<UUID>> = await this.instance.get("/conversations");
-        
-        let users: Array<User> = []
+        const response = await this.instance.get<Array<Profile>>("/conversations");
 
-        for (const user of response.data) {
-            users.push(await this.getUser(user));
-        }
-
-        return users;
+        return Promise.all(response.data.map((profile) => 
+            new User(profile, this, this.socket)
+        ));
     }
 
-    async createConversation(user: UUID, publicKey: string, privateKey: string) : Promise<void> {
+    async createConversation(user: UUID): Promise<void> {
+        const profile = await this.instance.get<Profile>(`/profile/${user}`)
+        const aesKey = randomBytes(32).toString("hex");
+
         await this.instance.post("/conversations", {
             user: user,
-            key: publicKey
+            key: publicEncrypt(Buffer.from(profile.data.publicKey, "base64"), Buffer.from(aesKey)).toString("base64")
         });
 
         this.keys[user] = {
-            public: publicKey,
-            private: privateKey
+            public: undefined,
+            private: undefined,
+            aes: aesKey
         }
     }
 
-    async closeConversation(user: UUID) : Promise<void> {
+    async closeConversation(user: UUID): Promise<void> {
         await this.instance.delete(`/conversations/${user}`);
     }
 
-    async getMessage(id: string) : Promise<Message> {
-        const response: AxiosResponse<messageTypes.Message> = await this.instance.get(`/messages/${id}`);
+    async getMessage(user: UUID, id: string): Promise<Message> {
+        const response = await this.instance.get<messageTypes.Message>(`/messages/${user}/${id}`);
 
-        let message = new Message(response.data, this, this.socket);
-        if (message.receiver === this.account.uuid) {
-            message.content = privateDecrypt(this.keys[message.author].private, Buffer.from(message.content)).toString('utf-8');
-            message.encrypted = false
-        }
+        const message = new TextMessage(response.data, this, this.socket);
 
         return message;
     }
 
-    async getMessages(user: UUID, limit: httpTypes.Limit = 50, after: string | undefined = undefined) : Promise<Array<Message>> {
-        const response: AxiosResponse<Array<messageTypes.Message>> = await this.instance.get(`/messages/${user}`, {
+    async getMessages(user: UUID, limit: httpTypes.Limit = 50, after: string | undefined = undefined): Promise<Array<Message>> {
+        const response = await this.instance.get<Array<messageTypes.Message>>(`/messages/${user}`, {
             params: {limit: limit, after: after}
         });
 
-        
-        let keys = this.keys[user]
-        let messages: Array<Message> = []
-
-        for (const message of response.data) {
-            let messageObject = new Message(message, this, this.socket);
-            if (message.receiver === this.account.uuid) {
-                messageObject.content = privateDecrypt(keys.private, Buffer.from(message.content, "base64")).toString("utf-8");
-                messageObject.encrypted = false
-            }
-
-            messages.push(messageObject);
-        }
-
-        return messages;
+        return Promise.all(response.data.map((message) => new TextMessage(message, this, this.socket)));
     }
 
     async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<Message>> {
@@ -162,29 +141,17 @@ export class HTTPConnection {
         return allMessages;
     };
 
-    async sendMessage(user: UUID, content: string) : Promise<Message> {
-        const publicKey = this.keys[user].public
+    async sendMessage(user: UUID, content: string): Promise<Message> {
+        const key = this.keys[user]
+        const message = encryptMessage(key.aes, content);
 
-        const message = publicEncrypt(publicKey, Buffer.from(content));
-
-        const response = await this.instance.post("/messages", {
+        const response = await this.instance.post<messageTypes.Message>("/messages", {
             user: user,
-            content: message
+            content: message.encrypted,
+            iv: message.iv
         });
 
-        let messageObject = new Message({
-            type: "message",
-            id: response.data.id,
-            author: this.account.uuid,
-            receiver: user,
-            content: content,
-            datetime: new Date().getTime(),
-            editDatetime: null,
-            read: false
-        }, this, this.socket);
-        messageObject.encrypted = false
-
-        return messageObject;
+        return new TextMessage(response.data, this, this.socket);
     }
 
     async deleteMessage(id: string) {
@@ -192,58 +159,72 @@ export class HTTPConnection {
     }
 
     async deleteMessages(user: UUID, ids: Array<string>) {
-        await this.instance.post(`${user}/messages/delete/bulk`, {
+        await this.instance.post(`/messages/${user}/bulk`, {
             data: ids
         });
     }
 
-    async editMessage(id: string, content: string) {
-        const message = await this.getMessage(id);
-        const publicKey = this.keys[message.author].public
+    async editMessage(user: UUID, id: string, content: string) {
+        const message = await this.getMessage(user, id);
+        const key = this.keys[message.author]
 
-        const edited = publicEncrypt(publicKey, Buffer.from(content));
+        const edited = editMessage(key.aes, message.iv as string, content);
 
         await this.instance.patch("/messages", {
-            id: id,
-            content: edited
+            message: id,
+            content: edited,
         });
     }
 
-    async sendKey(user: UUID, publicKey: string, privateKey: string) {
-        await this.instance.post("/key", {
-            key: publicKey,
-            receiver: user
-        });
-
-        this.keys[user] = {
-            public: publicKey,
-            private: privateKey
-        }
-    }
-
-    async getPublicKey(user: UUID) : Promise<string> {
-        const response: AxiosResponse<{key: string}> = await this.instance.get("keys/" + user);
+    async sendKey(user: UUID): Promise<KeyPair> {
+        const keys = new KeyPair();
         
-        return response.data.key;
+        await this.instance.post("/keys", {
+            key: keys.public.export().toString("utf8"),
+            user: user
+        });
+
+        setTimeout(async () => {
+            const aesKey = await this.instance.get<messageTypes.AESKeyMessage>(`/keys/${user}`, { params: { key: "aes" } });
+
+            this.keys[user] = {
+                public: keys.public.export().toString("utf8"),
+                private: keys.private.export().toString("utf8"),
+                aes: privateDecrypt(this.keys[this.account.id].private as string, Buffer.from(aesKey.data.content)).toString("utf8")
+            }
+        }, 300);
+
+        return keys;
+    }
+
+    async getPublicKey(user: UUID): Promise<RSAKeyMessage> {
+        const response = await this.instance.get<messageTypes.RSAKeyMessage>(`/keys/${user}`, { params: { key: "rsa" } });
+        
+        return new RSAKeyMessage(response.data);
+    }
+
+    async getAESKey(user: UUID): Promise<AESKeyMessage> {
+        const response = await this.instance.get<messageTypes.AESKeyMessage>(`/keys/${user}`, { params: { key: "aes" } });
+
+        return new AESKeyMessage(response.data, this.socket);
     }
 
 }
 
 export class SocketConnection extends EventEmitter {
     readonly account: Account;
-    readonly opts: socketTypes.CreateSocketOptions;
-    public keys: httpTypes.Keys | undefined;
+    readonly opts: types.ConnectionOptions;
+    public keys: httpTypes.Keys;
     readonly socket: Socket;
 
     public http: HTTPConnection | undefined;
 
-    constructor(account: Account, opts: socketTypes.CreateSocketOptions, http: HTTPConnection | undefined) {
+    constructor(account: Account, opts: types.ConnectionOptions = { keys: {} }, http: HTTPConnection | undefined) {
         super();
 
         this.account = account
         this.opts = opts
-        this.keys = http?.keys
-        this.http = http;
+        this.keys = opts.keys
 
         this.socket = io(`ws://localhost:${opts.socketPort}`, {
             auth: {
@@ -256,23 +237,46 @@ export class SocketConnection extends EventEmitter {
                 resolve();
             });
         }).then(() => {
+            this.socket.on("newConversation", (user: UUID, key: messageTypes.AESKeyMessage) => {
+                const message = new AESKeyMessage(key, this);
+                this.keys[user].aes = message.content
+                this.emit("newConversation", { user: user, key: message });
+
+                this.http?.sendKey(user);
+            });
+
             this.socket.on("newMessages", (messages: Array<messageTypes.Message>) => {
                 let newMessages = [];
 
                 for (const message of messages) {
-                    let objectMessage = new Message(message, this.http, this);
-                    if (this.http && message.author !== this.account.uuid) {
-                        objectMessage.content = privateDecrypt(this.http.keys[message.author].private, Buffer.from(message.content)).toString("utf-8")
-                        objectMessage.encrypted = false
-                    }
+                    let objectMessage = new TextMessage(message, this.http as HTTPConnection, this);
                     newMessages.push(objectMessage);
                 }
 
                 this.emit("newMessages", newMessages);
             });
 
-            this.socket.onAny((event: string, ...args) => {
-                this.emit(event, ...Object.values(args[0]));
+            this.socket.on("newMessage", (message: messageTypes.Message) => {
+                this.emit("newMessage", new TextMessage(message, this.http as HTTPConnection, this));
+            });
+
+            this.socket.on("messageEdit", (message: messageTypes.Message) => {
+                this.emit("messageEdit", new TextMessage(message, this.http as HTTPConnection, this));
+            });
+
+            this.socket.on("aesKeyEdit", async (message: messageTypes.AESKeyMessage) => {
+                const key = new AESKeyMessage(message, this);
+                this.keys[message.author].aes = key.content
+                this.emit("aesKeyEdit", key);
+            });
+
+            this.socket.on("rsaKey", (message: messageTypes.RSAKeyMessage) => {
+                this.keys[message.author].public = Buffer.from(message.content, "base64").toString("utf8");
+                this.emit("rsaKey", new RSAKeyMessage(message));
+            });
+
+            this.socket.onAny((event: string, data: any) => {
+                this.emit(event, ...Object.values(data));
             });
 
             this.socket.on("error", (error: httpTypes.ErrorResponse) => {
@@ -281,61 +285,46 @@ export class SocketConnection extends EventEmitter {
         });
     }
 
-    async markMessageAsRead(id: string) {
-        this.socket.emit("markMessageRead", {id: id});
-    }
-
     async typing(user: UUID) {
         this.socket.emit("typing", {user: user});
     }
 
     async changeStatus(status: AccountStatuses) {
         this.socket.emit("changeStatus", {status: status});
-        
-        // Set status if no errors received
-        setTimeout(() => {
-            this.account.status = status
-        }, 500);
     }
 }
 
-export async function createAccount(name: string, nickname: string, password: string) : Promise<Account> {
-    const response: AxiosResponse<httpTypes.CreateAccountResponse> = await axios.post("/accounts", {
+export async function createAccount(name: string, nickname: string, password: string): Promise<Account> {
+    const response: AxiosResponse<httpTypes.AccountResponse> = await axios.post("/accounts", {
         name: name,
         nickname: nickname,
         password: password
     })
     
-    if (response.status !== 200) {
+    if (response.status !== 200)
         throw new opcodeEnumeration[response.data.opcode](undefined, response);
-    }
 
-    return {
-        uuid: response.data.id,
-        name: response.data.name,
-        nickname: response.data.nickname,
-        password: password,
-        token: response.data.token,
-        avatar: null,
-    };
+    return response.data
 }
 
-export async function login(name: string, password: string, options: httpTypes.CreateClientOptions | socketTypes.CreateSocketOptions) : Promise<Client> {
+export async function login(name: string, password: string, options: types.ConnectionOptions): Promise<Client> {
     const response: AxiosResponse<httpTypes.AccountResponse> = await axios.get(`/login/${name}/${password}`);
 
-    if (response.status !== 200) {
+    if (response.status !== 200)
         throw new opcodeEnumeration[response.data.opcode](undefined, response);
-    }
+    
 
     return new Client(response.data, options);
 }
 
-export async function loginByToken(token: Token, options: httpTypes.CreateClientOptions | socketTypes.CreateSocketOptions): Promise<Client> {
-    const response: AxiosResponse<httpTypes.AccountResponse> = await axios.get(`/@me`);
+export async function loginByToken(token: Token, options: types.ConnectionOptions): Promise<Client> {
+    const response: AxiosResponse<httpTypes.AccountResponse> = await axios.get(`/@me`, {headers: {
+        Authorization: token
+    }});
 
-    if (response.status !== 200) {
+    if (response.status !== 200)
         throw new opcodeEnumeration[response.data.opcode](undefined, response);
-    }
+    
 
     return new Client(response.data, options);
 }
