@@ -2,7 +2,7 @@ import { UUID } from "crypto";
 import EventEmitter from "events";
 import { KeyObject } from "crypto";
 
-declare axpios;
+declare "axios.js";
 
 /********************
 *
