@@ -12,8 +12,8 @@ declare "axios.js";
 
 export class Client {
     readonly account: Account;
-    private http: HTTPConnection;
-    private socket: SocketConnection;
+    readonly http: HTTPConnection;
+    readonly socket: SocketConnection;
 
     constructor(account: Account, opts: ConnectionOptions = { keys: {} });
 
