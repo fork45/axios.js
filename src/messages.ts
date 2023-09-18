@@ -195,26 +195,20 @@ export class TextMessage extends Message {
         return this._read;
     }
 
-    async deleteMessage(): Promise<boolean> {
-        if (!this.connection) return false;
-
+    async deleteMessage(): Promise<boolean | void> {
         if (this.connection.account.id !== this.author) return false;
 
         await this.connection.deleteMessage(this.id);
-
-        return true;
     }
 
-    async editMessage(content: string): Promise<boolean> {
-        if (this.connection.account.id !== this.author || this.connection.keys[this.author])
+    async editMessage(content: string): Promise<void | boolean> {
+        if (this.connection.account.id !== this.author || !this.connection.keys[this.author])
             return false;
 
         const keys = this.connection.keys[this.author]
         await this.connection.editMessage(this.receiver, this.id, (encryptMessage(keys.aes, content)).encrypted);
         
         this.content = content
-
-        return true;
     }
 
 }

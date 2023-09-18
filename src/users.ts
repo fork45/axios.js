@@ -40,7 +40,7 @@ export class User extends EventEmitter {
 
             this.createConversation = async () => {};
             this.closeConversation = async () => {};
-            this.getMessages = async () => false;
+            this.getMessages = async () => [];
             this.getAllMessages = async () => [];
             this.deleteMessages = async () => {};
         });
@@ -100,7 +100,7 @@ export class User extends EventEmitter {
             this.emit("conversationDelete");
 
             this.closeConversation = async () => {};
-            this.getMessages = async () => false;
+            this.getMessages = async () => [];
             this.getAllMessages = async () => [];
             this.deleteMessages = async () => {};
         });
@@ -126,7 +126,7 @@ export class User extends EventEmitter {
         await this.http.closeConversation(this.id);
     }
 
-    async getMessages(limit: Limit = 50, after: string | undefined = undefined): Promise<boolean | Array<Message>> {
+    async getMessages(limit: Limit = 50, after: string | undefined = undefined): Promise<Array<Message>> {
         return await this.http.getMessages(this.id, limit, after);
     }
 
