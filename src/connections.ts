@@ -141,7 +141,7 @@ export class HTTPConnection {
         return allMessages;
     };
 
-    async sendMessage(user: UUID, content: string): Promise<Message> {
+    async sendMessage(user: UUID, content: string): Promise<TextMessage> {
         const key = this.keys[user]
         const message = encryptMessage(key.aes, content);
 
