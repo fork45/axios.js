@@ -114,7 +114,7 @@ export class HTTPConnection {
         return message;
     }
 
-    async getMessages(user: UUID, limit: httpTypes.Limit = 50, after: string | undefined = undefined): Promise<Array<Message>> {
+    async getMessages(user: UUID, limit: httpTypes.Limit = 50, after: string | undefined = undefined): Promise<Array<TextMessage>> {
         const response = await this.instance.get<Array<messageTypes.Message>>(`/messages/${user}`, {
             params: {limit: limit, after: after}
         });
@@ -122,9 +122,9 @@ export class HTTPConnection {
         return Promise.all(response.data.map((message) => new TextMessage(message, this, this.socket)));
     }
 
-    async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<Message>> {
+    async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<TextMessage>> {
         let afterMessage: string | undefined = after
-        let allMessages: Array<Message> = []
+        let allMessages: Array<TextMessage> = []
 
         while (true) {
             let messages = await this.getMessages(user, 100, afterMessage);

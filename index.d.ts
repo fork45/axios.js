@@ -44,8 +44,8 @@ export class HTTPConnection {
     async createConversation(user: UUID): Promise<void>;
     async closeConversation(user: UUID): Promise<void>;
     async getMessage(user: UUID, id: string): Promise<Message>;
-    async getMessages(user: UUID, limit: Limit = 50, after: string | undefined = undefined): Promise<Array<Message>>;
-    async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<Message>>;
+    async getMessages(user: UUID, limit: Limit = 50, after: string | undefined = undefined): Promise<Array<TextMessage>>;
+    async getAllMessages(user: UUID, after: string | undefined = undefined): Promise<Array<TextMessage>>;
     async sendMessage(user: UUID, content: string): Promise<Message>;
     async deleteMessage(id: string);
     async deleteMessages(user: UUID, ids: Array<string>);
